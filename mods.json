@@ -1,0 +1,9 @@
+{
+  "modList" : [ {
+    "modName" : "ProfileMod",
+    "enabled" : true
+  }, {
+    "modName" : "TestMod",
+    "enabled" : true
+  } ]
+}
