@@ -1,5 +1,6 @@
 import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonProperty;
+import org.codehaus.jackson.map.JsonMappingException;
 import org.codehaus.jackson.map.ObjectMapper;
 
 import javax.swing.*;
@@ -7,6 +8,8 @@ import javax.swing.table.AbstractTableModel;
 import java.awt.event.*;
 import java.io.*;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 public class ModManager extends JDialog {
     private JPanel contentPane;
@@ -18,7 +21,7 @@ public class ModManager extends JDialog {
     private JTable table;
     private File file;
     private ObjectMapper mapper;
-    private ModList modList;
+    private List<Mod> modList = new ArrayList<Mod>();
 
     public ModManager() {
         setContentPane(contentPane);
@@ -57,7 +60,7 @@ public class ModManager extends JDialog {
 
     private void onOK() {
         for(int i=0;i<table.getRowCount();i++){
-            modList.modList.get(i).enbabled = (Boolean)table.getValueAt(i, 0);
+            modList.get(i).enabled = (Boolean)table.getValueAt(i, 0);
         }
 
         try {
@@ -89,82 +92,95 @@ public class ModManager extends JDialog {
     }
 
     private void fillContents(){
-        boolean exists = false;
+        boolean exists = false, error = false;
 
         String executionPath = System.getProperty("user.dir");
         this.file = new File(executionPath+"/"+"mods.json");
 
         try {
             if(!file.exists()) this.file.createNewFile();
+            mapper = new ObjectMapper(); //Create the mapper and read in the mods.json file.
 
-            //Create the mapper and read in the mods.json file.
-            mapper = new ObjectMapper();
-            this.modList =  mapper.readValue(this.file, ModList.class);
+            try {
+                this.modList = Arrays.asList(mapper.readValue(this.file, Mod[].class));
 
-            //Open the mods folder or create one.
-            File modMasterDir = new File(executionPath + "/" + "mods");
-            if(!modMasterDir.exists()) modMasterDir.mkdir();
+                //Open the mods folder or create one.
+                File modMasterDir = new File(executionPath + "/" + "mods");
+                if(!modMasterDir.exists()) modMasterDir.mkdir();
 
-            //For each directory inside the mods folder, read the info.json if it exists.
-            for(File modDir : modMasterDir.listFiles()){
-                if(!modDir.isDirectory())
-                    continue;
+                //For each directory inside the mods folder, read the info.json if it exists.
+                for(File modDir : modMasterDir.listFiles()){
+                    if(!modDir.isDirectory()) continue;
 
-                //Try to get the info.json.
-                File infoFile = new File(modDir+"/info.json");
-                if(!infoFile.exists()) continue;
+                    //Try to get the info.json.
+                    File infoFile = new File(modDir+"/info.json");
+                    if(!infoFile.exists()) continue;
 
-                //Read in the info.json
-                ModInfo modInfo = mapper.readValue(infoFile, ModInfo.class);
+                    //Read in the info.json
+                    ModInfo modInfo = mapper.readValue(infoFile, ModInfo.class);
 
-                //Check if it already exists.
-                for(Mod mod : modList.modList){
-                    if(mod.modName.equals(modInfo.name)){
-                        exists = true;
-                        mod.exists = true;
-                        break;
+                    //Check if it already exists.
+                    for(Mod mod : modList)
+                        if(mod.modName.equals(modInfo.name)){
+                            exists = true;
+                            mod.exists = true;
+                            mod.version = modInfo.version;
+                            mod.description = modInfo.description;
+                            break;
+                        }
+                    //If it didn't exist, add it!.
+                    if(!exists) modList.add(new Mod(modInfo.name, false, modInfo.version, modInfo.description, true));
+                    //Reset the flag.
+                    exists = false;
+                }
+
+                //Check over all the mods. If they do not exist/were not recently added, remove from the mod list.
+                for(int i=0;i<modList.size();i++){
+                    Mod mod = modList.get(i);
+                    if(!mod.exists){
+                        modList.remove(i);
+                        i--;
                     }
                 }
-
-                //If it didn't exist, add it!.
-                if(!exists)
-                    modList.modList.add(new Mod(modInfo.name, false, true));
-
-                //Reset the flag.
-                exists = false;
+            }catch(JsonMappingException e){
+                e.printStackTrace();
+                error = true;
             }
 
-            //Check over all the mods. If they do not exist/were not recently added, remove from the mod list.
-            for(int i=0;i<modList.modList.size();i++){
-                Mod mod = modList.modList.get(i);
-                if(!mod.exists){
-                    modList.modList.remove(i);
-                    i--;
+            String[] columnNames;
+            Object[][] data;
+
+            //If there was an error, display an error.
+            if(error){
+                data = new Object[1][1];
+                data[0][0] = "Error reading mods.json";
+                columnNames = new String[1];
+                columnNames[0] = "";
+
+            //Otherwise, continue normally.
+            }else{
+                int size = modList.size() > 0 ? modList.size() : 1;
+                data = new Object[size][3];
+                columnNames = new String[3];
+
+                data[0][0] = data[0][1] = data[0][2] = "No mods found";
+
+                //For each Mod in the list, assign the data.
+                for(int i=0; i<modList.size();i++){
+                    Mod mod = modList.get(i);
+                    data[i][0] = mod.enabled;
+                    data[i][1] = mod.modName;
+                    data[i][2] = mod.version;
                 }
+
+                //Column names!
+                columnNames[0] = "Enabled";
+                columnNames[1] = "Name";
+                columnNames[2] = "Version";
             }
-
-            Object[][] data = new Object[modList.modList.size()][3];
-
-            for(int i=0; i<modList.modList.size();i++){
-                Mod mod = modList.modList.get(i);
-                data[i][0] = mod.enbabled;
-                data[i][1] = mod.modName;
-                data[i][2] = "Version: 0.1";
-            }
-
-            String[] columnNames = {"Enabled", "Name", "Version"};
 
             this.table = new JTable(new CheckboxTable(data, columnNames));
-
-            //list.setVisible(true);
-            //box.setPreferredSize(new Dimension(200, 400));
-
             contentScroll.setViewportView(table);
-            pack();
-
-            contentScroll.revalidate();
-            contentScroll.repaint();
-            System.out.println("Such as");
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -184,45 +200,38 @@ public class ModManager extends JDialog {
 
     }
 
-    public static class ModList{
-        @JsonProperty("modList")
-        public ArrayList<Mod> modList;
-
-        public ModList(){
-
-        }
-
-        public ModList(ArrayList<Mod> modList){
-            this.modList = modList;
-        }
-    }
-
     public static class Mod{
         @JsonProperty("modName")
         public String modName;
         @JsonProperty("enabled")
-        public boolean enbabled;
+        public boolean enabled;
+
+        @JsonIgnore
+        public String version = "";
+        @JsonIgnore
+        public String description = "";
         @JsonIgnore
         public boolean exists = false;
 
         public Mod() {
         }
 
-        public Mod(String modName, boolean enbabled) {
+        public Mod(String modName, boolean enabled, String version, String description, boolean exists) {
             this.modName = modName;
-            this.enbabled = enbabled;
-        }
-
-        public Mod(String modName, boolean enbabled, boolean exists) {
-            this.modName = modName;
-            this.enbabled = enbabled;
+            this.enabled = enabled;
+            this.version = version;
+            this.description = description;
             this.exists = exists;
         }
     }
 
     public static class ModInfo{
         @JsonProperty("name")
-        public String name;
+        public String name="";
+        @JsonProperty("version")
+        public String version="";
+        @JsonProperty("description")
+        public String description="";
 
         public ModInfo(){
         }
