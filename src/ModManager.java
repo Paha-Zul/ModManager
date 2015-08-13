@@ -7,8 +7,10 @@ import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
 import java.awt.event.*;
 import java.io.*;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedList;
 import java.util.List;
 
 public class ModManager extends JDialog {
@@ -21,7 +23,7 @@ public class ModManager extends JDialog {
     private JTable table;
     private File file;
     private ObjectMapper mapper;
-    private List<Mod> modList = new ArrayList<Mod>();
+    private List<Mod> modList = new LinkedList<Mod>();
 
     public ModManager() {
         setContentPane(contentPane);
@@ -95,14 +97,29 @@ public class ModManager extends JDialog {
         boolean exists = false, error = false;
 
         String executionPath = System.getProperty("user.dir");
-        this.file = new File(executionPath+"/"+"mods.json");
+        this.file = new File(executionPath+"/mods"+"/mods.json");
 
         try {
-            if(!file.exists()) this.file.createNewFile();
+            if(!file.exists()) {
+                this.file.createNewFile();
+                BufferedWriter out = new BufferedWriter(new FileWriter(this.file), 32768);
+                out.write("[\n]");
+                out.close();
+            }else{
+                BufferedReader br = new BufferedReader(new FileReader(this.file));
+                if (br.readLine() == null) {
+                    System.out.println("No errors, and file empty");
+                    BufferedWriter out = new BufferedWriter(new FileWriter(this.file), 32768);
+                    out.write("[\n]");
+                    out.close();
+                }
+            }
             mapper = new ObjectMapper(); //Create the mapper and read in the mods.json file.
 
             try {
-                this.modList = Arrays.asList(mapper.readValue(this.file, Mod[].class));
+                //asList returns a fixed size list. So we create the list and then copy it!
+                List<Mod> list = Arrays.asList(mapper.readValue(this.file, Mod[].class));
+                for(Mod mod : list) this.modList.add(mod);
 
                 //Open the mods folder or create one.
                 File modMasterDir = new File(executionPath + "/" + "mods");
@@ -144,6 +161,8 @@ public class ModManager extends JDialog {
                 }
             }catch(JsonMappingException e){
                 e.printStackTrace();
+                Logger.log(Logger.ERROR, "There was a problem mapping a Json file to an object.");
+                e.printStackTrace(Logger.getPrintWriter());
                 error = true;
             }
 
@@ -184,6 +203,11 @@ public class ModManager extends JDialog {
 
         } catch (IOException e) {
             e.printStackTrace();
+            Logger.log(Logger.ERROR, "Something went wrong getting or creating the file...");
+            e.printStackTrace(Logger.getPrintWriter());
+
+        } finally {
+            Logger.close();
         }
 
     }
